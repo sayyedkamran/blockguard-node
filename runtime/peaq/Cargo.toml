@@ -99,6 +99,7 @@ orml-xtokens = { workspace = true, default-features = false }
 orml-xcm-support = { workspace = true, default-features = false }
 pallet-collective = { workspace = true, default-features = false }
 sp-weights = { workspace = true, default-features = false }
+pallet-collator-selection = { workspace = true, default-features = false }
 
 evm-tracing-events = { path = "../../primitives/rpc/evm-tracing-events", optional = true, default-features = false }
 peaq-evm-tracer = { path = "../evm_tracer", optional = true, default-features = false }
@@ -284,7 +285,7 @@ std = [
 	"pallet-evm-precompile-vesting/std",
 	"pallet-xcm/std",
 	"inflation-manager/std",
-
+	"pallet-collator-selection/std", 
 	# try-runtime
 	"frame-try-runtime/std",
 	# "sp-debug-derive/std"

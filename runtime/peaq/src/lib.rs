@@ -55,6 +55,7 @@ use sp_std::{marker::PhantomData, prelude::*, vec, vec::Vec};
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use zenlink_protocol::{AssetBalance, MultiAssetsHandler, PairInfo, ZenlinkMultiAssets};
+use pallet_collator_selection;
 
 mod weights;
 pub mod xcm_config;
@@ -97,6 +98,8 @@ use peaq_primitives_xcm::{
 };
 use peaq_rpc_primitives_txpool::TxPoolResponse;
 use zenlink_protocol::AssetId as ZenlinkAssetId;
+use pallet_collator_selection;
+
 
 pub use peaq_pallet_did;
 pub use peaq_pallet_rbac;
@@ -744,15 +747,16 @@ impl pallet_authorship::Config for Runtime {
 impl pallet_session::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type ValidatorId = <Self as frame_system::Config>::AccountId;
-	type ValidatorIdOf = ConvertInto;
-	type ShouldEndSession = ParachainStaking;
-	type NextSessionRotation = ParachainStaking;
-	type SessionManager = ParachainStaking;
+	type ValidatorIdOf = ConvertInto;  //pallet_collator_selection::IdentityCollator; 
+	type ShouldEndSession = pallet_session::PeriodicSessions<SessionPeriod, SessionOffset>; //ParachainStaking;
+	type NextSessionRotation = pallet_session::PeriodicSessions<SessionPeriod, SessionOffset>; //ParachainStaking;
+	type SessionManager = CollatorSelection; //ParachainStaking;
 	type SessionHandler = <opaque::SessionKeys as OpaqueKeys>::KeyTypeIdProviders;
 	type Keys = opaque::SessionKeys;
 	type WeightInfo = pallet_session::weights::SubstrateWeight<Runtime>;
 }
 
+/* 
 pub mod staking {
 	use super::*;
 
@@ -791,6 +795,7 @@ pub mod staking {
 	}
 }
 
+ 
 impl parachain_staking::Config for Runtime {
 	type PotId = PotStakeId;
 	type RuntimeEvent = RuntimeEvent;
@@ -815,6 +820,10 @@ impl parachain_staking::Config for Runtime {
 
 	type WeightInfo = parachain_staking::weights::WeightInfo<Runtime>;
 }
+*/
+
+
+
 
 /// Implements the adapters for depositing unbalanced tokens on pots
 /// of various pallets, e.g. Peaq-MOR, Peaq-Treasury etc.
@@ -834,7 +843,7 @@ macro_rules! impl_to_pot_adapter {
 	};
 }
 
-impl_to_pot_adapter!(ToStakingPot, PotStakeId, NegativeImbalance);
+//impl_to_pot_adapter!(ToStakingPot, PotStakeId, NegativeImbalance);
 impl_to_pot_adapter!(ToCoreTimePot, PotCoretimeId, NegativeImbalance);
 impl_to_pot_adapter!(ToSubsidizationPot, PotSubsidizationId, NegativeImbalance);
 impl_to_pot_adapter!(ToDepinStakingPot, PotDepinStakingId, NegativeImbalance);
@@ -1025,12 +1034,13 @@ construct_runtime!(
 		Authorship: pallet_authorship::{Pallet, Storage} = 20,
 		Session: pallet_session::{Pallet, Call, Storage, Event, Config<T>} = 21,
 		AuraExt: cumulus_pallet_aura_ext::{Pallet, Storage, Config} = 22,
-		ParachainStaking: parachain_staking::{Pallet, Call, Storage, Event<T>, Config<T>} = 23,
+		// ParachainStaking: parachain_staking::{Pallet, Call, Storage, Event<T>, Config<T>} = 23,
 		ParachainSystem: cumulus_pallet_parachain_system::{Pallet, Call, Storage, Inherent, Event<T>} = 24,
 		ParachainInfo: parachain_info::{Pallet, Storage, Config} = 25,
 		BlockReward: pallet_block_reward::{Pallet, Call, Storage, Config<T>, Event<T>} = 26,
 		// Remove StakingCoefficientRewardCalculator: 27
 
+		
 		// XCM helpers.
 		XcmpQueue: cumulus_pallet_xcmp_queue::{Pallet, Call, Storage, Event<T>} = 30,
 		PolkadotXcm: pallet_xcm::{Pallet, Call, Event<T>, Origin, Config} = 31,
@@ -1043,6 +1053,9 @@ construct_runtime!(
 		AddressUnification: address_unification::{Pallet, Call, Storage, Event<T>} = 41,
 
 		Vesting: pallet_vesting = 50,
+
+		// To Implement PoS
+        CollatorSelection: pallet_collator_selection = 51,
 
 		// Include the custom pallets
 		PeaqDid: peaq_pallet_did::{Pallet, Call, Storage, Event<T>} = 100,
@@ -1097,7 +1110,8 @@ mod benches {
 		[pallet_timestamp, Timestamp]
 		[pallet_multisig, Multisig]
 		[cumulus_pallet_xcmp_queue, XcmpQueue]
-		[parachain_staking, ParachainStaking]
+		[pallet_collator_selection, CollatorSelection]
+		//[parachain_staking, ParachainStaking]
 		[pallet_block_reward, BlockReward]
 		[peaq_pallet_transaction, Transaction]
 		[peaq_pallet_did, PeaqDid]
@@ -2093,3 +2107,30 @@ impl EVMAddressToAssetId<StorageAssetId> for Runtime {
 		Some(AssetIdToEVMAddress::<EVMAssetPrefix>::convert(asset_id))
 	}
 }
+
+pub struct CollatorSelectionAccountCheck;
+impl pallet_collator_selection::AccountCheck<AccountId> for CollatorSelectionAccountCheck {
+    fn allowed_candidacy(account: &AccountId) -> bool {
+        !DappStaking::is_staker(account)
+    }
+}
+
+
+impl pallet_collator_selection::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type UpdateOrigin = EnsureRoot<AccountId>;
+    type PotId = PotId;
+    type MaxCandidates = MaxCandidates;
+    type MinCandidates = MinCandidates;
+    type MaxInvulnerables = MaxInvulnerables;
+    // should be a multiple of session or things will get inconsistent
+    type KickThreshold = KickThreshold;
+    type ValidatorId = <Self as frame_system::Config>::AccountId;
+    type ValidatorIdOf = pallet_collator_selection::IdentityCollator;
+    type ValidatorRegistration = Session;
+    //type SlashRatio = SlashRatio;
+    //type AccountCheck = CollatorSelectionAccountCheck;
+    type WeightInfo = pallet_collator_selection::weights::SubstrateWeight<Runtime>;
+}
+
